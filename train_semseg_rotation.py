@@ -65,6 +65,8 @@ def train(args, io):
         model = DGCNN_semseg(args).to(device)
     elif args.model == 'PCT':
         model = PCT_semseg(args).to(device)
+    elif args.model == 'dgcnn_patch':
+        model = DGCNN_patch_semseg(args).to(device)
     elif args.model == 'PCT_patch':
         model = PCT_patch_semseg(args).to(device)
     else:
@@ -169,7 +171,8 @@ def train(args, io):
             seg_pred = seg_pred.permute(0, 2, 1).contiguous()                      #(batch_size,num_points, class_categories)
             batch_label = target.view(-1, 1)[:, 0].cpu().data.numpy()              #array(batch_size*num_points)            loss = criterion(seg_pred.view(-1, NUM_CLASS), target.view(-1,1).squeeze(),weights,using_weight=args.use_weigth)     #a scalar
             loss = criterion(seg_pred.view(-1, NUM_CLASS), target.view(-1,1).squeeze(),weights__,using_weight=args.use_weigth)     #a scalar
-            loss=loss+criterion2(result.view(-1, 3),goals.view(-1, 3),masks)*args.factor_cluster
+            if args.model=="PCT_patch" or args.model=="dgcnn_patch":
+                loss=loss+criterion2(result.view(-1, 3),goals.view(-1, 3),masks)*args.factor_cluster
             loss = loss+feature_transform_reguliarzer(trans)*args.factor_trans
             loss.backward()
             opt.step()
@@ -223,7 +226,7 @@ def train(args, io):
                 points,GT=rotate_per_batch(points,None)
                 points = points.permute(0, 2, 1)
                 batch_size = points.size()[0]
-                seg_pred_,trans_= model(points.float(),seg)
+                seg_pred_,trans_,_= model(points.float(),seg)
                 seg_pred_ = seg_pred_.permute(0, 2, 1).contiguous()
                 batch_label = seg.view(-1, 1)[:, 0].cpu().data.numpy()   #array(batch_size*num_points)
                 loss = criterion(seg_pred_.view(-1, NUM_CLASS), seg.view(-1,1).squeeze(),weights__,using_weight=args.use_weigth)     #a scalar
@@ -420,8 +423,8 @@ def test(args, io):
 if __name__ == "__main__":
     # Training settings
     parser = argparse.ArgumentParser(description='Point Cloud Semantic Segmentation')
-    parser.add_argument('--model', type=str, default='PCT_patch', metavar='N',
-                        choices=['pointnet','dgcnn','PCT','PCT_patch'],
+    parser.add_argument('--model', type=str, default='dgcnn', metavar='N',
+                        choices=['pointnet','dgcnn','PCT','dgcnn_patch','PCT_patch'],
                         help='Model to use, [dgcnn]')
     parser.add_argument('--batch_size', type=int, default=2, metavar='batch_size',
                         help='Size of batch)')

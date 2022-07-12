@@ -12,7 +12,7 @@ from numpy.random import choice
 from tqdm import tqdm           #used to display the circulation position, to see where the code is running at
 from torch.utils.data import Dataset
 from sklearn.neighbors import NearestNeighbors
-from display import Visuell_PointCloud,Visuell,Visuell__
+# from display import Visuell_PointCloud,Visuell,Visuell__
 from pointnet_util import index_points
 import torch
 from kmeans_pytorch import kmeans

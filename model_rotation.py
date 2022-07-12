@@ -225,7 +225,7 @@ class DGCNN_semseg(nn.Module):
                                    self.bn8,    #1024
                                    nn.LeakyReLU(negative_slope=0.2))
         self.dp1 = nn.Dropout(p=args.dropout)
-        self.conv9 = nn.Conv1d(256, 7, kernel_size=1, bias=False)   #256*6=1536
+        self.conv9 = nn.Conv1d(256, 6, kernel_size=1, bias=False)   #256*6=1536
         #dgcnn_con      1244800
 
         
@@ -273,7 +273,7 @@ class DGCNN_semseg(nn.Module):
         x = self.dp1(x)
         x = self.conv9(x)                       # (batch_size, 256, num_points) -> (batch_size, 13, num_points)
         
-        return x,trans,None,None
+        return x,trans,None
 
 
 
@@ -312,10 +312,10 @@ class PCT_semseg(nn.Module):
                                    self.bn__,        #256
                                    nn.LeakyReLU(negative_slope=0.2))        #0
                                    
-        self.conv5 = nn.Conv1d(1024 * 3, 512, 1)
+        self.conv5 = nn.Conv1d(1024+512, 512, 1)
         self.dp5 = nn.Dropout(0.5)
         self.conv6 = nn.Conv1d(512, 256, 1)
-        self.conv7 = nn.Conv1d(256, 7, 1)
+        self.conv7 = nn.Conv1d(256, 6, 1)
         self.bn5 = nn.BatchNorm1d(512)
         self.bn6 = nn.BatchNorm1d(256)
         self.relu = nn.ReLU()
@@ -353,20 +353,17 @@ class PCT_semseg(nn.Module):
         x4 = self.sa4(x3)                      #(batch_size, 64*2, num_points)->(batch_size, 64*2, num_points)
         x = torch.cat((x1, x2, x3, x4), dim=-1)      #(batch_size, 64*2, num_points)*4->(batch_size, 512, num_points)
         x=x.permute(0,2,1)
+        x__=x
         x = self.conv__(x)                           # (batch_size, 512, num_points)->(batch_size, 1024, num_points) 
-        x11 = x.max(dim=-1, keepdim=False)[0]       # (batch_size, 1024, num_points) -> (batch_size, 1024)
-        x11=x11.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
-        x12=torch.mean(x,dim=2,keepdim=False)       # (batch_size, 1024, num_points) -> (batch_size,1024)
-        x12=x12.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
-        x_global = torch.cat((x11, x12), dim=1)     # (batch_size,1024,num_points)+(batch_size, 1024,num_points)-> (batch_size, 2048,num_points)
-        x=torch.cat((x,x_global),dim=1)             # (batch_size,2048,num_points)+(batch_size, 1024,num_points) ->(batch_size, 3036,num_points)
+        x = x.max(dim=-1, keepdim=False)[0]       # (batch_size, 1024, num_points) -> (batch_size, 1024)
+        x=x.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
+        x=torch.cat((x,x__),dim=1)             # (batch_size,2048,num_points)+(batch_size, 1024,num_points) ->(batch_size, 3036,num_points)
         x=self.relu(self.bn5(self.conv5(x)))        # (batch_size, 3036,num_points)-> (batch_size, 512,num_points)
         x=self.dp5(x)                      
         x=self.relu(self.bn6(self.conv6(x)))        # (batch_size, 512,num_points) ->(batch_size,256,num_points)
         x=self.conv7(x)                             # # (batch_size, 256,num_points) ->(batch_size,6,num_points)
         
-        return x,trans,None,None
-
+        return x,trans,None
 
 
 
@@ -482,6 +479,189 @@ class ball_query_sample_with_goal(nn.Module):                                #to
         radius_points = radius_points.squeeze(dim=-1).squeeze(dim=-1)             #[bs,512,n_superpoint,1,1]->[bs,512,n_superpoint]                                          #[bs,n_superpoint]
 
         return radius_points,result_net
+
+
+
+class DGCNN_patch_semseg(nn.Module):
+    def __init__(self, args):
+        super(DGCNN_patch_semseg, self).__init__()
+        self.actv_fn = nn.LeakyReLU(negative_slope=0.2)
+        self.source_sample_after_rotate=args.s_a_r
+        self.p_dropout = args.dropout
+        self.input_dim = 3
+        self.top_k = 32
+        self.d_model = args.hidden_size
+        self.num_classes= 6  
+
+        #########################################################################
+        #dynamic graph based network
+        ########################################################################
+        self.args = args
+        self.k = 20
+        self.s3n = STN3d(3)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.bn4 = nn.BatchNorm2d(64)
+        self.bn5 = nn.BatchNorm2d(64)
+        self.bn6 = nn.BatchNorm1d(512)
+        self.bn7 = nn.BatchNorm1d(512)
+        self.bn8 = nn.BatchNorm1d(256)                                                             
+        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),     #3*64=384
+                                   self.bn1,            #2*64*2=256
+                                   nn.LeakyReLU(negative_slope=0.2))        #0
+        self.conv2 = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, bias=False),    #64*64=4096
+                                   self.bn2,        #256
+                                   nn.LeakyReLU(negative_slope=0.2))        #0
+        self.conv3 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),      #128*64=8096
+                                   self.bn3,        #256
+                                   nn.LeakyReLU(negative_slope=0.2))        #0
+        self.conv4 = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, bias=False),        #64*64=4096
+                                   self.bn4,        #256
+                                   nn.LeakyReLU(negative_slope=0.2))        #0
+        self.conv5 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),      #64*64=4096
+                                   self.bn5,        #256
+                                   nn.LeakyReLU(negative_slope=0.2))        
+        self.conv6 = nn.Sequential(nn.Conv1d(192, 512, kernel_size=1, bias=False),    #192*1024=196068
+                                   self.bn6,        #1024*2*2=4096
+                                   nn.LeakyReLU(negative_slope=0.2))        
+     
+
+
+
+
+        #############################################################################
+        #self desigened superpoint sample net and its net of generation local features 
+        #############################################################################
+        self.sort_ch = [self.input_dim,64, 128, 256]
+        self.sort_cnn = create_conv1d_serials(self.sort_ch)   
+        self.sort_cnn.apply(init_weights)
+        self.sort_bn = nn.ModuleList(
+            [
+                nn.BatchNorm1d(num_features=self.sort_ch[i+1])
+                for i in range(len(self.sort_ch)-1)
+            ]
+        )
+        self.superpointnet =ball_query_sample_with_goal(args,self.sort_ch[-1], self.input_dim, self.actv_fn, top_k=self.top_k)
+
+
+
+        #############################
+        #
+        #############################
+        ## Create Local-Global Attention
+        self.decoder_layer = nn.TransformerDecoderLayer(self.d_model, nhead=4)
+        self.last_layer = PTransformerDecoderLayer(self.d_model, nhead=4, last_dim=512)
+        self.custom_decoder = PTransformerDecoder(self.decoder_layer, 4, self.last_layer)
+        self.transformer_model = nn.Transformer(d_model=self.d_model,nhead=4,num_encoder_layers=2,num_decoder_layers=2,custom_decoder=self.custom_decoder,)
+        self.transformer_model.apply(init_weights)
+
+        ##########################################################
+        #final segmentation layer
+        ###################################################### 
+        self.bn7 = nn.BatchNorm1d(1024)
+        self.conv7 = nn.Sequential(nn.Conv1d(512, 1024, kernel_size=1, bias=False),         
+                                   self.bn7,        #2048
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.bn8 = nn.BatchNorm1d(512)
+        self.conv8 = nn.Sequential(nn.Conv1d(1728, 512, kernel_size=1, bias=False),         #1216*512=622592
+                                   self.bn8,        #2048
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.bn9 = nn.BatchNorm1d(256)
+        self.conv9 = nn.Sequential(nn.Conv1d(512, 256, kernel_size=1, bias=False),      #512*256=131072
+                                   self.bn9,    #1024
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.dp1 = nn.Dropout(p=args.dropout)
+        self.conv10 = nn.Conv1d(256, self.num_classes, kernel_size=1, bias=False)   #256*6=1536
+
+    def forward(self, x, target):
+        x=x.float()
+        x_local=x
+        input=x
+
+        trans=self.s3n(x)
+        x=x.permute(0,2,1)                      #(batch_size, 3, num_points)->(batch_size,  num_points,3)
+        x = torch.bmm(x, trans)
+        #Visuell_PointCloud_per_batch(x,target)
+        x=x.permute(0,2,1)
+        x_a_r=x
+        #############################################
+        ## Global Features
+        #############################################
+        batch_size = x.size(0)
+        num_points = x.size(2)
+ 
+        x = get_neighbors(x, k=self.k)       # (batch_size, 3, num_points) -> (batch_size, 3*2, num_points, k)
+        x = self.conv1(x)                        # (batch_size, 3*2, num_points, k) -> (batch_size, 64, num_points, k)
+        x = self.conv2(x)                        # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points, k)
+        x1 = x.max(dim=-1, keepdim=False)[0]    # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points)
+
+
+        x = get_neighbors(x1, k=self.k)     # (batch_size, 64, num_points) -> (batch_size, 64*2, num_points, k)
+        x = self.conv3(x)                       # (batch_size, 64*2, num_points, k) -> (batch_size, 64, num_points, k)
+        x = self.conv4(x)                       # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points, k)
+        x2 = x.max(dim=-1, keepdim=False)[0]    # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points)
+
+
+        x = get_neighbors(x2, k=self.k)     # (batch_size, 64, num_points) -> (batch_size, 64*2, num_points, k)
+        x = self.conv5(x)                       # (batch_size, 64*2, num_points, k) -> (batch_size, 64, num_points, k)
+        x3 = x.max(dim=-1, keepdim=False)[0]    # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points)
+
+
+        x = torch.cat((x1, x2, x3), dim=1)      # (batch_size, 64*3, num_points)
+        x_pre=x
+        x = self.conv6(x)                       # (batch_size, 64*3, num_points) -> (batch_size, emb_dims, num_points)
+        x_gloabel=x
+
+        #############################################
+        ## sample Features
+        #############################################  
+        if self.source_sample_after_rotate:
+            x_sample=x_a_r  
+        else:
+            x_sample=input  
+
+        for i, sort_conv in enumerate(self.sort_cnn):                       #[bs,1,Cor,n_points]->[bs,256,n_points]
+
+            bn = self.sort_bn[i]
+            x_sample = self.actv_fn(bn(sort_conv(x_sample)))
+
+
+        x_local_sorted,result=self.superpointnet(x_sample,input,x_a_r,target)              #[bs,256,n_points]->[bs,512,16]
+
+
+        #############################################
+        ## Point Transformer  global to local
+        #############################################
+        source = x_local_sorted.permute(2, 0, 1)                                        # [bs,1024,64]->[64,bs,1024]
+        target = x_gloabel.permute(2, 0, 1)                           # [bs,1024,10]->[10,bs,1024]
+        embedding = self.transformer_model(source, target)                 # [64,bs,1024]+[16,bs,1024]->[16,bs,1024]
+
+
+        # #############################################
+        # ## Point Transformer  local to global
+        # #############################################
+        # target = x.permute(2, 0, 1)                                        # [bs,1024,64]->[64,bs,1024]
+        # source = x_local_sorted.permute(2, 0, 1)                           # [bs,1024,10]->[10,bs,1024]
+        # embedding = self.transformer_model(source, target)                 # [16,bs,1024]+[64,bs,1024]->[64,bs,1024]
+
+
+
+        ################################################
+        ##segmentation
+        ################################################
+        embedding=embedding.permute(1,2,0)                                  # [32,bs,512]->[bs,512,32]
+        x=self.bn7(self.conv7(x))
+        x = x.max(dim=-1, keepdim=True)[0]                                  # (batch_size, emb_dims, 10) -> (batch_size, emb_dims, 1)
+        x = x.repeat(1, 1, num_points)                                      # (batch_size, 1024, n_points)
+        x = torch.cat((x,x_pre,embedding), dim=1)                         # (batch_size, 1024*2, num_points)
+        x = self.conv8(x)                                                   # (batch_size, 1024*2, num_points) -> (batch_size, 512, num_points)
+        x = self.conv9(x)                                                   # (batch_size, 512, num_points) -> (batch_size, 256, num_points)
+        x = self.dp1(x)
+        x = self.conv10(x)                                                   # (batch_size, 256, num_points) -> (batch_size, 6, num_points)
+
+        return x,trans,result
 
 
 
@@ -659,5 +839,5 @@ class PCT_patch_semseg(nn.Module):
         if self.args.training:
             return x,trans,result
         else:
-            return x,trans
+            return x,trans,None
 
