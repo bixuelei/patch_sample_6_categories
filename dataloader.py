@@ -290,14 +290,11 @@ class MotorDataset(Dataset):
         self.persentage=label_num_eachtype__/np.sum(label_num_eachtype__)
         print(self.persentage)
         ####reversed order
-        # label_num_eachtype[-2]*=30
         # label_num_eachtype[-1]/=10
-        # label_num_eachtype[-2]/=bolt_weight
         labelweights=label_num_eachtype/np.sum(label_num_eachtype)
         labelweights=np.power(np.max(labelweights)/labelweights,1/3)
         #### normal order
         # label_num_eachtype[-1]*=bolt_weight
-        # label_num_eachtype[-2]*=bolt_weight
         # labelweights=label_num_eachtype/np.sum(label_num_eachtype)
         # labelweights=np.power(labelweights/np.max(labelweights),1/3)
         self.num_eachtype__=label_num_eachtype__
