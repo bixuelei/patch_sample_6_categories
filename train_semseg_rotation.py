@@ -119,7 +119,7 @@ def train(args, io):
     criterion = cal_loss
     criterion2= mean_loss
     loss_cluster=nn.MSELoss()
-    NUM_CLASS=7
+    NUM_CLASS=6
     best_iou = 0
     best_bolts_iou=0
     weights__ = torch.Tensor(TRAIN_DATASET.labelweights).cuda()
@@ -138,11 +138,10 @@ def train(args, io):
     #     weights[i][i]=weights__[i]*scale
     # weights__*=scale
     if not args.use_weigth:
-        for i in range(7):
+        for i in range(6):
             weights__[i]=1
     # weights=weights.cuda()
     print(weights__[5])
-    print(weights__[6])
     for epoch in range(start_epoch,args.epochs):
         ####################
         # Train
@@ -199,8 +198,7 @@ def train(args, io):
         writer.add_scalar('Training loss', (loss_sum / num_batches), epoch)
         writer.add_scalar('Training accuracy', (total_correct / float(total_seen)), epoch)
         writer.add_scalar('Training mean ioU', (mIoU__), epoch)
-        writer.add_scalar('Training loU of cover_bolt',(total_correct_class__[6] / float(total_iou_deno_class__[6])), epoch)
-        writer.add_scalar('Training loU of bolt',((total_correct_class__[6]+total_correct_class__[5]) / (float(total_iou_deno_class__[6])+float(total_iou_deno_class__[5]))), epoch)
+        writer.add_scalar('Training loU of bolt',(total_correct_class__[5] / float(total_iou_deno_class__[5])), epoch)
         ####################
         # Validation
         ####################
@@ -284,8 +282,7 @@ def train(args, io):
                 io.cprint('Saving best model at %s' % savepath)
                 torch.save(state, savepath)
             io.cprint('Best mIoU: %f' % best_iou)
-            # cur_bolts_iou=(total_correct_class[5]+total_correct_class[6])/ (float(total_iou_deno_class[5])+ float(total_iou_deno_class[6]))
-            cur_bolts_iou=total_correct_class[6] / float(total_iou_deno_class[6])
+            cur_bolts_iou=total_correct_class[5] / float(total_iou_deno_class[5])
             if cur_bolts_iou >= best_bolts_iou:
                 best_bolts_iou=cur_bolts_iou
                 if args.finetune:
@@ -305,8 +302,7 @@ def train(args, io):
         writer.add_scalar('Validation loss', (loss_sum / num_batches), epoch)
         writer.add_scalar('Validation accuracy', (total_correct / float(total_seen)), epoch)
         writer.add_scalar('validation mean ioU', (mIoU), epoch)
-        writer.add_scalar('Validation loU of bolt',(total_correct_class[5]+total_correct_class[6])/ (float(total_iou_deno_class[5])+ float(total_iou_deno_class[6])), epoch)
-        writer.add_scalar('Validation loU of cover_bolt',(total_correct_class[6] / float(total_iou_deno_class[6])), epoch)
+        writer.add_scalar('Validation loU of bolt',(total_correct_class[5] / float(total_iou_deno_class[5])), epoch)
 
     io.close()
 

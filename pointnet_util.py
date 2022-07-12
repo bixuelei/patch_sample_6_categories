@@ -66,65 +66,6 @@ def index_points(points, idx):
     return new_points
 
 
-
-def Visuell(sampled,add, SavePCDFile = False, FileName = None):
-    #get only the koordinate from sampled
-    sampled=sampled.cpu()
-    sampled = np.asarray(sampled)
-    add=add.cpu()
-    add = np.asarray(add)
-    PointCloud_koordinate = np.vstack((sampled,add))
-
-    colors=[]
-    for i in range(sampled.shape[0]):
-        colors.append([70,70,70])
-    for i in range(add.shape[0]):
-        colors.append([255,0,0])
-    colors=np.array(colors)
-    colors=colors/255
-    print(colors)
-
-    #visuell the point cloud
-    point_cloud = open3d.geometry.PointCloud()
-    point_cloud.points = open3d.utility.Vector3dVector(PointCloud_koordinate)
-    point_cloud.colors = open3d.utility.Vector3dVector(colors)
-    open3d.visualization.draw_geometries([point_cloud])
-
-    if SavePCDFile is True:
-    # #save the pcd file
-        open3d.io.write_point_cloud(FileName +'.pcd', point_cloud)
-
-
-
-def Visuell__(sampled,add, SavePCDFile = False, FileName = None):
-    #get only the koordinate from sampled
-    sampled=sampled.cpu()
-    sampled = np.asarray(sampled)
-    add=add.cpu()
-    add = np.asarray(add)
-    PointCloud_koordinate=sampled
-    colors=[]
-    for i in range(sampled.shape[0]):
-        if i not in add:
-            colors.append([70,70,70])
-        else:
-            colors.append([255,0,0])
-    colors=np.array(colors)
-    colors=colors/255
-    print(colors)
-
-    #visuell the point cloud
-    point_cloud = open3d.geometry.PointCloud()
-    point_cloud.points = open3d.utility.Vector3dVector(PointCloud_koordinate)
-    point_cloud.colors = open3d.utility.Vector3dVector(colors)
-    open3d.visualization.draw_geometries([point_cloud])
-
-    if SavePCDFile is True:
-    # #save the pcd file
-        open3d.io.write_point_cloud(FileName +'.pcd', point_cloud)
-
-
-
 def knn(x, k):
     """
     Input:

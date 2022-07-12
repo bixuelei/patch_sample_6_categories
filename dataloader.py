@@ -12,10 +12,10 @@ from numpy.random import choice
 from tqdm import tqdm           #used to display the circulation position, to see where the code is running at
 from torch.utils.data import Dataset
 from sklearn.neighbors import NearestNeighbors
-# from display import Visuell_PointCloud
-from pointnet_util import index_points#,Visuell,Visuell__
+from display import Visuell_PointCloud,Visuell,Visuell__
+from pointnet_util import index_points
 import torch
-# from kmeans_pytorch import kmeans
+from kmeans_pytorch import kmeans
 
 
 ####### normalize the point cloud############
@@ -105,12 +105,12 @@ def find_goals_kmeans(points__,target__):  # [bs,n_points,C] [bs,n_points]
     # target__=target__.astype(np.float32)
     # points = torch.from_numpy(points).cuda()
     # target= torch.from_numpy(target).cuda()
-    goals_=[4,2,1,1,1,2,5]
+    goals_=[8,8,8,8,8,8]
     bs=points__.shape[0]
-    mask=torch.ones((bs,16))
+    mask=torch.ones((bs,48))
     # # device=points.device
-    cover_bolts=torch.zeros(bs,goals_[6],3)
-    side_bolts=torch.zeros(bs,goals_[5],3)
+    # cover_bolts=torch.zeros(bs,goals_[6],3)
+    bolts=torch.zeros(bs,goals_[5],3)
     bottoms=torch.zeros(bs,goals_[4],3)
     chargers=torch.zeros(bs,goals_[2],3)
     gearcontainers=torch.zeros(bs,goals_[3],3)
@@ -122,26 +122,15 @@ def find_goals_kmeans(points__,target__):  # [bs,n_points,C] [bs,n_points]
         points=points[:,0:3]
         index_clampingsystem=target==0
         points1=points[index_clampingsystem,:]
-        # _,c1=KMeans(points1,goals_[1])
-#         _,c1=kmeans(
-#     X=points1, num_clusters=goals_[0], iter_limit = 300,distance='euclidean', device=torch.device('cuda')
-# )
         _,c1=kmeans(X=points1, num_clusters=goals_[0],distance='euclidean', device=torch.device('cuda'))
 #         c1=c1.cuda()
+        dis1=square_distance(points1.unsqueeze(0).float(),c1.unsqueeze(0).float())
+        index1=dis1.squeeze(0).min(dim=0, keepdim=False)[1]
+        added1=index_points(points1.unsqueeze(0),index1.unsqueeze(0))
         #######################
         # Visuell(points1,c1)
-        # together1=torch.cat([c1,points1],dim=0).unsqueeze(0)
-        # index1=knn(together1.permute(0, 2, 1),2)
-        # inter=index1[0,0:goals_[0],1]
-        # Visuell__(together1.squeeze(0),inter)
+        # Visuell__(points1.squeeze(0),index1)
         #########################
-        # sqr1=square_distance(c1.unsqueeze(0),points1.unsqueeze(0))
-        # together1=torch.cat([c1,points1],dim=0).unsqueeze(0)
-        # index1=knn(together1.permute(0, 2, 1),2)[0,0:goals_[0],1].unsqueeze(0)
-        # added1=index_points(together1,index1)
-        dis1=square_distance(points1.unsqueeze(0).float(),c1.unsqueeze(0).float())
-        index1=dis1.squeeze(0).max(dim=0, keepdim=False)[1]
-        added1=index_points(points1.unsqueeze(0),index1.unsqueeze(0))
         _,sorted_index_clamping=added1.squeeze(0).sort(dim=0)
         sorted_index_clamping_x=sorted_index_clamping[:,0]
         goals_clamping=added1[:,sorted_index_clamping_x,:]
@@ -151,22 +140,15 @@ def find_goals_kmeans(points__,target__):  # [bs,n_points,C] [bs,n_points]
 
         index_cover=target==1
         points2=points[index_cover,:]
-        # _,c2=KMeans(points2,goals_[1])
         _,c2=kmeans(X=points2, num_clusters=goals_[1], distance='euclidean', device=torch.device('cuda'))
         # c2=c2.cuda()
+        dis2=square_distance(points2.unsqueeze(0).float(),c2.unsqueeze(0).float())
+        index2=dis2.squeeze(0).min(dim=0, keepdim=False)[1]
+        added2=index_points(points2.unsqueeze(0),index2.unsqueeze(0))
         #######################
         # Visuell(points2,c2)
-        # together2=torch.cat([c2,points2],dim=0).unsqueeze(0)
-        # index2=knn(together2.permute(0, 2, 1),2)
-        # inter=index2[0,0:goals_[1],1]
-        # Visuell__(together2.squeeze(0),inter)
+        # Visuell__(points2.squeeze(0),index2)
         ###########################
-        dis2=square_distance(points2.unsqueeze(0).float(),c2.unsqueeze(0).float())
-        index2=dis2.squeeze(0).max(dim=0, keepdim=False)[1]
-        added2=index_points(points2.unsqueeze(0),index2.unsqueeze(0))
-        # together2=torch.cat([c2,points2],dim=0).unsqueeze(0)
-        # index2=knn(together2.permute(0, 2, 1),2)[0,0:goals_[1],1].unsqueeze(0)
-        # added2=index_points(together2,index2)
         _,sorted_index_cover=added2.squeeze(0).sort(dim=0)
         sorted_index_cover_x=sorted_index_cover[:,0]
         goals_cover=added2[:,sorted_index_cover_x,:]
@@ -174,173 +156,83 @@ def find_goals_kmeans(points__,target__):  # [bs,n_points,C] [bs,n_points]
 
         
         index_gearcontainer=target==2
-        if torch.sum(index_gearcontainer)>=1:
-            points_gear=points[index_gearcontainer,:]
-            points_gear_c=torch.sum(points_gear,dim=0)/torch.sum(points_gear,dim=0)
-
-            dis3=square_distance(points_gear.unsqueeze(0).float(),points_gear_c.unsqueeze(0).unsqueeze(0).float())
-            index3=dis3.squeeze(0).max(dim=0, keepdim=False)[1]
-            added3=index_points(points_gear.unsqueeze(0),index3.unsqueeze(0))
-
-            gearcontainers[i,:,:]=added3[0,:,:]
+        if torch.sum(index_gearcontainer)>=8:
+            points3=points[index_gearcontainer,:]
+            _,c3=kmeans(X=points3, num_clusters=goals_[2], distance='euclidean', device=torch.device('cuda'))
+            # c3=c3.cuda()
+            dis3=square_distance(points3.unsqueeze(0).float(),c3.unsqueeze(0).float())
+            index3=dis3.squeeze(0).min(dim=0, keepdim=False)[1]
+            added3=index_points(points3.unsqueeze(0),index3.unsqueeze(0))
+            #######################
+            # Visuell(points3,c3)
+            # Visuell__(points3.squeeze(0),index3)
+            ###########################
+            _,sorted_index_gear=added3.squeeze(0).sort(dim=0)
+            sorted_index_gear_x=sorted_index_gear[:,0]
+            goals_gear=added3[:,sorted_index_gear_x,:]
+            gearcontainers[i,:,:]=goals_gear[0,:,:]
         else:
             gearcontainers[i,:,:]=torch.zeros((goals_[2],3))
-            mask[i][6]=0    
+            mask[i][16:24]=0    
 
 
 
         index_charger=target==3
-        if torch.sum(index_charger)>=1:
-            points_charger=points[index_charger,:]
-            points_charger_c=torch.sum(points_charger,dim=0)/torch.sum(points_charger,dim=0)
-
-            dis4=square_distance(points_charger.unsqueeze(0).float(),points_charger_c.unsqueeze(0).unsqueeze(0).float())
-            index4=dis4.squeeze(0).max(dim=0, keepdim=False)[1]
-            added4=index_points(points_charger.unsqueeze(0),index4.unsqueeze(0))
-
-            chargers[i,:,:]=added4[0,:,:]
+        if torch.sum(index_charger)>=8:
+            points4=points[index_charger,:]
+            _,c4=kmeans(X=points4, num_clusters=goals_[3], distance='euclidean', device=torch.device('cuda'))
+            dis4=square_distance(points4.unsqueeze(0).float(),c4.unsqueeze(0).float())
+            index4=dis4.squeeze(0).min(dim=0, keepdim=False)[1]
+            added4=index_points(points4.unsqueeze(0),index4.unsqueeze(0))
+            #######################
+            # Visuell(points4,c4)
+            # Visuell__(points4.squeeze(0),index4)
+            ###########################
+            _,sorted_index_charger=added4.squeeze(0).sort(dim=0)
+            sorted_index_charger_x=sorted_index_charger[:,0]
+            goals_charger=added4[:,sorted_index_charger_x,:]
+            chargers[i,:,:]=goals_charger[0,:,:]
         else:
-            chargers[i,:,:]=torch.zeros((goals_[2],3))
-            mask[i][7]=0           
+            chargers[i,:,:]=torch.zeros((goals_[3],3))
+            mask[i][24:32]=0           
 
         index_bottom=target==4
-        points_bottom=points[index_bottom,:]
-        points_bottom_c=torch.sum(points_bottom,dim=0)/torch.sum(points_bottom,dim=0)
-        # together5=torch.cat([points_bottom,points_bottom_c],dim=0).unsqueeze(0)
-
-        dis5=square_distance(points_bottom.unsqueeze(0).float(),points_bottom_c.unsqueeze(0).unsqueeze(0).float())
-        index5=dis5.squeeze(0).max(dim=0, keepdim=False)[1]
-        added5=index_points(points_bottom.unsqueeze(0),index5.unsqueeze(0))
-        # index5=knn(together5.permute(0, 2, 1),2)[0,0:goals_[4],1].unsqueeze(0)
-        # added5=index_points(together5,index5)
-        bottoms[i,:,:]=added5[0,:,:]
-
-        # index_gearcontainer=target==2
-        # if points[i,index_gearcontainer,:].unsqueeze(0).shape[1]!=0:
-        #     points3=points[i,index_gearcontainer,:]
-        #     # _,c3=KMeans(points3,goals_[2])
-        #     _,c3=kmeans(X=points3, num_clusters=goals_[2], distance='euclidean', device=torch.device('cuda'))
-        #     c3=c3.cuda()
-        #     ########################
-        #     # Visuell(points3,c3)
-        #     # together3=torch.cat([c3,points3],dim=0).unsqueeze(0)
-        #     # index3=knn(together3.permute(0, 2, 1),2)
-        #     # inter=index3[0,0:goals_[2],1]
-        #     # Visuell__(together3.squeeze(0),inter)
-        #     ############################
-        #     together3=torch.cat([c3,points3],dim=0).unsqueeze(0)
-        #     index3=knn(together3.permute(0, 2, 1),2)[0,0:goals_[2],1].unsqueeze(0)
-        #     added3=index_points(together3,index3)
-        #     _,sorted_index_gearcontainer=added3.squeeze(0).sort(dim=0)
-        #     sorted_index_gearcontainer_x=sorted_index_gearcontainer[:,0]
-        #     goals_gearcontainer=added3[:,sorted_index_gearcontainer_x,:]
-        #     gearcontainers[i,:,:]=goals_gearcontainer[0,:,:]
-        # else:
-        #     gearcontainers[i,:,:]=torch.zeros((goals_[2],3))
-        #     mask[i][6]=0
-            
+        points5=points[index_bottom,:]
+        _,c5=kmeans(X=points5, num_clusters=goals_[4], distance='euclidean', device=torch.device('cuda'))
+        dis5=square_distance(points5.unsqueeze(0).float(),c5.unsqueeze(0).float())
+        index5=dis5.squeeze(0).min(dim=0, keepdim=False)[1]
+        added5=index_points(points5.unsqueeze(0),index5.unsqueeze(0))
+        #######################
+        # Visuell(points5,c5)
+        # Visuell__(points5.squeeze(0),index5)
+        ###########################
+        _,sorted_index_bottom=added5.squeeze(0).sort(dim=0)
+        sorted_index_bottom_x=sorted_index_bottom[:,0]
+        goals_bottom=added5[:,sorted_index_bottom_x,:]
+        bottoms[i,:,:]=goals_bottom[0,:,:]
 
 
-
-        # index_charger=target[i,:]==3
-        # if points[i,index_charger,:].unsqueeze(0).shape[1]!=0:
-        #     points4=points[i,index_charger,:]
-        #     # _,c4=KMeans(points4,goals_[3])
-        #     _,c4=kmeans(X=points4, num_clusters=goals_[3], distance='euclidean', device=torch.device('cuda'))
-        #     c4=c4.cuda()
-        #     ########################
-        #     # Visuell(points4,c4)
-        #     # together4=torch.cat([c4,points4],dim=0).unsqueeze(0)
-        #     # index4=knn(together4.permute(0, 2, 1),2)
-        #     # inter=index4[0,0:goals_[3],1]
-        #     # Visuell__(together4.squeeze(0),inter)
-        #     ############################
-        #     together4=torch.cat([c4,points4],dim=0).unsqueeze(0)
-        #     index4=knn(together4.permute(0, 2, 1),2)[0,0:goals_[3],1].unsqueeze(0)
-        #     added4=index_points(together4,index4)
-        #     _,sorted_index_charger=added4.squeeze(0).sort(dim=0)
-        #     sorted_index_charger_x=sorted_index_charger[:,0]
-        #     goals_charger=added4[:,sorted_index_charger_x,:]
-        #     chargers[i,:,:]=goals_charger[0,:,:]
-        # else:
-        #     chargers[i,:,:]=torch.zeros((goals_[3],3))
-        #     mask[i][7]=0
-
-
-
-        # index_bottom=target[i,:]==4
-        # num5=torch.sum(index_bottom,dim=0)
-        # if num5>=goals_[4]:
-        #     points5=points[i,index_bottom,:]
-        #     # _,c5=KMeans(points5,goals_[4])
-        #     _,c5=kmeans(X=points5, num_clusters=goals_[4], distance='euclidean', device=torch.device('cuda'))
-        #     c5=c5.cuda()
-        #     ########################
-        #     # Visuell(points5,c5)
-        #     # together5=torch.cat([c5,points5],dim=0).unsqueeze(0)
-        #     # index5=knn(together5.permute(0, 2, 1),2)
-        #     # inter=index5[0,0:goals_[4],1]
-        #     # Visuell__(together5.squeeze(0),inter)
-        #     ############################
-        #     together5=torch.cat([c5,points5],dim=0).unsqueeze(0)
-        #     index5=knn(together5.permute(0, 2, 1),2)[0,0:goals_[4],1].unsqueeze(0)
-        #     added5=index_points(together5,index5)
-        #     _,sorted_index_bottom=added5.squeeze(0).sort(dim=0)
-        #     sorted_index_bottom_x=sorted_index_bottom[:,0]
-        #     goals_bottom=added5[:,sorted_index_bottom_x,:]
-        #     bottoms[i,:,:]=goals_bottom[0,:,:]
-        # else:
-        #     bottoms[i,:,:]=torch.zeros((goals_[4],3))
-        #     mask[i][8]=0
-
-
-        index_side_bolts=target==5
-        if torch.sum(index_side_bolts)>=2:
-            points6=points[index_side_bolts,:]
-            # _,c6=KMeans(points6,goals_[5],Niter=20)
+        index_bolts=target==5
+        if torch.sum(index_bolts)>=8:
+            points6=points[index_bolts,:]
             _,c6=kmeans(X=points6, num_clusters=goals_[5], distance='euclidean', device=torch.device('cpu'))
             # c6=c6.cuda()
+            dis6=square_distance(points6.unsqueeze(0).float(),c6.unsqueeze(0).float())
+            index6=dis6.squeeze(0).min(dim=0, keepdim=False)[1]
+            added6=index_points(points6.unsqueeze(0),index6.unsqueeze(0))
             ########################
             # Visuell(points6,c6)
-            # together6=torch.cat([c6,points6],dim=0).unsqueeze(0)
-            # index6=knn(together6.permute(0, 2, 1),2)
-            # inter=index6[0,0:goals_[5],1]
-            # Visuell__(together6.squeeze(0),inter)
+            Visuell__(points6.squeeze(0),index6)
             ############################
-            together6=torch.cat([c6,points6],dim=0).unsqueeze(0)
-            index6=knn(together6.permute(0, 2, 1),2)[0,0:goals_[5],1].unsqueeze(0)
-            added6=index_points(together6,index6)
-            _,sorted_index_side_bolt=added6.squeeze(0).sort(dim=0)
-            sorted_index_side_bolt_x=sorted_index_side_bolt[:,0]
-            goals_side_bolts=added6[:,sorted_index_side_bolt_x,:]
-            side_bolts[i,:,:]=goals_side_bolts[0,:,:]
+            _,sorted_index_bolt=added6.squeeze(0).sort(dim=0)
+            sorted_index_bolt_x=sorted_index_bolt[:,0]
+            goals_bolts=added6[:,sorted_index_bolt_x,:]
+            bolts[i,:,:]=goals_bolts[0,:,:]
         else:
-            side_bolts[i,:,:]=torch.ones((2,3))
-            mask[i][9:10]=0
+            bolts[i,:,:]=torch.ones((goals_[5],3))
+            mask[i][40:48]=0
 
-
-        
-
-        index_cover_bolts=target==6
-        points7=points[index_cover_bolts,:]
-        # _,c7=KMeans(points7,goals_[6],Niter=300)
-        _,c7=kmeans(X=points7, num_clusters=goals_[6], distance='euclidean', device=torch.device('cpu'))
-        # c7=c7.cuda()
-        #######################
-        # Visuell(points7,c7)
-        # together7=torch.cat([c7,points7],dim=0).unsqueeze(0)
-        # index7=knn(together7.permute(0, 2, 1),2)
-        # inter=index7[0,0:goals_[6],1]
-        # Visuell__(together7.squeeze(0),inter)
-        ############################
-        together7=torch.cat([c7,points7],dim=0).unsqueeze(0)
-        index7=knn(together7.permute(0, 2, 1),2)[0,0:goals_[6],1].unsqueeze(0)
-        added7=index_points(together7,index7)
-        _,sorted_index_cover_bolt=added7.squeeze(0).sort(dim=0)
-        sorted_index_cover_bolt_x=sorted_index_cover_bolt[:,0]
-        goals_cover_bolts=added7[:,sorted_index_cover_bolt_x,:]
-        cover_bolts[i,:,:]=goals_cover_bolts[0,:,:]
-    goals=torch.cat((clampingsystem,covers,gearcontainers,chargers,bottoms,side_bolts,cover_bolts), dim=1)
+    goals=torch.cat((clampingsystem,covers,gearcontainers,chargers,bottoms,bolts), dim=1)
     return goals.numpy(),mask.numpy()
 
 
@@ -364,7 +256,7 @@ class MotorDataset(Dataset):
         self.motors_points=[]       #initial object_motor_points and object_motor_lables
         self.motors_labels=[]      
         num_points_eachmotor=[]     #initial a list to count the num of points for each motor   
-        label_num_eachtype=np.zeros(7)      #initial a array to count how much points is there for each type
+        label_num_eachtype=np.zeros(6)      #initial a array to count how much points is there for each type
         for motor_position in tqdm(motor_positions,total=len(motor_positions)):
             motor_directory=os.path.join(data_root,motor_position)
             motor_data=np.load(motor_directory)
@@ -372,12 +264,13 @@ class MotorDataset(Dataset):
             # motor_data=densify_blots(motor_data)
             motor_points=motor_data[:,0:6]
             motor_labels=motor_data[:,6]            #result is a np array           
-            num_eachtype_in_one_motor,_=np.histogram(motor_labels,bins=7,range=(0,7))       #count how much points is there for each type(usage of np.histotram)
+            num_eachtype_in_one_motor,_=np.histogram(motor_labels,bins=6,range=(0,6))       #count how much points is there for each type(usage of np.histotram)
             label_num_eachtype+=num_eachtype_in_one_motor
             self.motors_points.append(motor_points)
             self.motors_labels.append(motor_labels)
             num_points_eachmotor.append(motor_labels.size)
-        #  record goals
+        ######## make the goals  record goals ############
+        ####### another hiwi,you could see here,  create goals #####################
         # self.goals,self.mask=find_goals_kmeans(np.array(self.motors_points),np.array(self.motors_labels))
         # self.goals=self.goals.reshape(self.goals.shape[0],-1)
         # np.savetxt("goals_6.txt",self.goals.reshape(self.goals.shape[0],-1))
@@ -461,13 +354,13 @@ class MotorDataset_validation(Dataset):
         self.motors_points=[]       #initial object_motor_points and object_motor_lables
         self.motors_labels=[]      
         num_points_eachmotor=[]     #initial a list to count the num of points for each motor   
-        label_num_eachtype=np.zeros(7)      #initial a array to count how much points is there for each type
+        label_num_eachtype=np.zeros(6)      #initial a array to count how much points is there for each type
         for motor_position in tqdm(motor_positions,total=len(motor_positions)):
             motor_directory=os.path.join(data_root,motor_position)
             motor_data=np.load(motor_directory)
             motor_points=motor_data[:,0:6]
             motor_labels=motor_data[:,6]            #result is a np array           
-            num_eachtype_in_one_motor,_=np.histogram(motor_labels,bins=7,range=(0,7))       #count how much points is there for each type(usage of np.histotram)
+            num_eachtype_in_one_motor,_=np.histogram(motor_labels,bins=6,range=(0,6))       #count how much points is there for each type(usage of np.histotram)
             label_num_eachtype+=num_eachtype_in_one_motor
             self.motors_points.append(motor_points)
             self.motors_labels.append(motor_labels)

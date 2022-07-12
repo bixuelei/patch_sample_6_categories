@@ -15,7 +15,7 @@ import torch.nn.init as init
 import torch.nn.functional as F
 from attention_util import create_conv1d_serials,create_conv3d_serials,SA_Layer_Single_Head,SA_Layer_Multi_Head,PTransformerDecoderLayer,PTransformerDecoder,init_weights,SA_Layers
 from util import *
-from pointnet_util import PointNetSetAbstraction,PointNetFeaturePropagation,PointNetSetAbstractionMsg, index_points,query_ball_point
+from pointnet_util import PointNetSetAbstraction,PointNetFeaturePropagation,PointNetSetAbstractionMsg, index_points,query_ball_point,square_distance
 from torch.autograd import Variable
 # from display import *
 
@@ -395,7 +395,7 @@ class ball_query_sample_with_goal(nn.Module):                                #to
 
         self.loss_function=nn.MSELoss()
  
-        self.feat_channels_1d = [self.num_feats,64, 32, 16]
+        self.feat_channels_1d = [self.num_feats,64, 64, 48]
         self.feat_generator = create_conv1d_serials(self.feat_channels_1d)
         self.feat_generator.apply(init_weights)
         self.feat_bn = nn.ModuleList(
@@ -407,7 +407,7 @@ class ball_query_sample_with_goal(nn.Module):                                #to
 
 
         self.feat_channels_3d = [128, 256, self.d_model]
-        self.radius_cnn = create_conv3d_serials(self.feat_channels_3d, self.max_radius_points + 1, 3)
+        self.radius_cnn = create_conv3d_serials(self.feat_channels_3d, self.max_radius_points, 3)
         self.radius_cnn.apply(init_weights)
         self.radius_bn = nn.ModuleList(
             [
@@ -423,12 +423,12 @@ class ball_query_sample_with_goal(nn.Module):                                #to
         feat_dim = input.shape[1]
 
         hoch_features_att = hoch_features 
-        # #############################################################
-        # #implemented by myself
-        # #############################################################
-        # hoch_features_att=hoch_features_att.permute(0,2,1)
-        # hoch_features_att=self.selfatn_layers(hoch_features_att)
-        # hoch_features_att=hoch_features_att.permute(0,2,1)
+        #############################################################
+        #implemented by myself
+        #############################################################
+        hoch_features_att=hoch_features_att.permute(0,2,1)
+        hoch_features_att=self.selfatn_layers(hoch_features_att)
+        hoch_features_att=hoch_features_att.permute(0,2,1)
 
 
         ##########################
@@ -443,15 +443,9 @@ class ball_query_sample_with_goal(nn.Module):                                #to
         
         #visialize_cluster(input,indices)
         indices=indices[:,:,0]
-        # make the top1 get close to the set goals
         result_net =torch.ones((1))
-        # goal=torch.ones((1))
-        # mask=torch.ones((1))
-        if not self.args.eval and self.args.training:
-            index = indices                                         #[bs,n_cluster,top_k]->[bs,n_cluster,top_k]
-            result_net = index_points(input.permute(0, 2, 1).float(), index)
-            # result_net=result_net.squeeze(2)
-            # goal,mask=find_goals_kmeans(input.permute(0, 2, 1),target)
+        if not self.args.eval and self.args.training:                                    #[bs,n_cluster,top_k]->[bs,n_cluster,top_k]
+            result_net = index_points(input.permute(0, 2, 1).float(), indices)
 
 
 
@@ -467,30 +461,27 @@ class ball_query_sample_with_goal(nn.Module):                                #to
         all_points = input.permute(0, 2, 1).float()                              #[bs,C,n_points]->[bs,n_points,C]
         query_points = sorted_input.permute(0, 2, 1)                             #[bs,C,n_superpoint]->[bs,n_superpoint,C]
 
-        radius_indices = query_ball_point(                                       #idx=[bs,n_superpoint,n_sample]
-            self.radius,
-            self.max_radius_points,
-            all_points[:, :, :3],
-            query_points[:, :, :3],)
+        dis1=square_distance(all_points,query_points)
+        radius_indices=torch.topk(-dis1, k=32, dim=-2).indices.permute(0, 2, 1)  
+        # radius_indices = query_ball_point(                                       #idx=[bs,n_superpoint,n_sample]
+        #     self.radius,
+        #     self.max_radius_points,
+        #     all_points[:, :, :3],
+        #     query_points[:, :, :3],)
 
         if self.point_after:
             radius_points = index_points(x_a_r.permute(0,2,1), radius_indices)
         else:
             radius_points = index_points(all_points, radius_indices)                    #[bs,n_superpoint,n_sample,C]
-
-        radius_centroids = query_points.unsqueeze(dim=-2)                           #[bs,n_superpoint,1,C]
-        radius_grouped = torch.cat([radius_centroids, radius_points], dim=-2).unsqueeze(
-            dim=1                                                                   #[bs,n_superpoint,n_sample,C]+[bs,n_superpoint,1,C]->[bs,n_superpoint,n_sample+1,C]
-        )
+        radius_points=radius_points.unsqueeze(dim=1)                                  
 
         for i, radius_conv in enumerate(self.radius_cnn):                           #[bs,n_superpoint,n_sample+1,C]->[bs,512,n_superpoint,1,1]
             bn = self.radius_bn[i]
-            radius_grouped = self.actv_fn(bn(radius_conv(radius_grouped)))
+            radius_points = self.actv_fn(bn(radius_conv(radius_points)))
 
-        radius_grouped = radius_grouped.squeeze(dim=-1).squeeze(dim=-1)             #[bs,512,n_superpoint,1,1]->[bs,512,n_superpoint]                                          #[bs,n_superpoint]
-        sorted_input = radius_grouped                                               #[bs,512,n_superpoint]
+        radius_points = radius_points.squeeze(dim=-1).squeeze(dim=-1)             #[bs,512,n_superpoint,1,1]->[bs,512,n_superpoint]                                          #[bs,n_superpoint]
 
-        return sorted_input,result_net
+        return radius_points,result_net
 
 
 
@@ -534,7 +525,7 @@ class PCT_patch_semseg(nn.Module):
         self.conv__ = nn.Sequential(nn.Conv1d(512, 1024, kernel_size=1, bias=False),      #128*64=8096
                                    self.bn__,        #256
                                    nn.LeakyReLU(negative_slope=0.2))        #0            
-        self.conv5 = nn.Conv1d(1024 * 3, 512, 1)
+        self.conv5 = nn.Conv1d(1024 * 2, 512, 1)
         self.dp5 = nn.Dropout(0.5)
 
 
@@ -573,7 +564,7 @@ class PCT_patch_semseg(nn.Module):
                                    self.bnup,        #2048
                                    nn.LeakyReLU(negative_slope=0.2))       
         self.conv6 = nn.Conv1d(512, 256, 1)
-        self.conv7 = nn.Conv1d(256, 7, 1)
+        self.conv7 = nn.Conv1d(256, 6, 1)
         self.bn5 = nn.BatchNorm1d(512)
         self.bn6 = nn.BatchNorm1d(256)
         self.dp6=nn.Dropout(0.5)
@@ -618,12 +609,12 @@ class PCT_patch_semseg(nn.Module):
         x_global=x
 
         x = self.conv__(x)                           # (batch_size, 512, num_points)->(batch_size, 1024, num_points) 
-        x11 = x.max(dim=-1, keepdim=False)[0]       # (batch_size, 1024, num_points) -> (batch_size, 1024)
-        x11=x11.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
-        x12=torch.mean(x,dim=2,keepdim=False)       # (batch_size, 1024, num_points) -> (batch_size,1024)
-        x12=x12.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
-        x_global_integrated = torch.cat((x11, x12), dim=1)     # (batch_size,1024,num_points)+(batch_size, 1024,num_points)-> (batch_size, 2048,num_points)
-        x=torch.cat((x,x_global_integrated),dim=1)             # (batch_size,2048,num_points)+(batch_size, 1024,num_points) ->(batch_size, 3036,num_points)
+        x = x.max(dim=-1, keepdim=False)[0]       # (batch_size, 1024, num_points) -> (batch_size, 1024)
+        x=x.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
+        # x12=torch.mean(x,dim=2,keepdim=False)       # (batch_size, 1024, num_points) -> (batch_size,1024)
+        # x12=x12.unsqueeze(-1).repeat(1,1,num_points)# (batch_size, 1024)->(batch_size, 1024, num_points)
+        # x_global_integrated = torch.cat((x11, x12), dim=1)     # (batch_size,1024,num_points)+(batch_size, 1024,num_points)-> (batch_size, 2048,num_points)
+        x=torch.cat((x,x_global),dim=1)             # (batch_size,2048,num_points)+(batch_size, 1024,num_points) ->(batch_size, 3036,num_points)
 
 
 
@@ -648,10 +639,10 @@ class PCT_patch_semseg(nn.Module):
        #############################################
         ## Point Transformer
         #############################################
-        target = self.relu(self.bn5(self.conv5(x))).permute(2, 0, 1)                                       # [bs,1024,64]->[64,bs,1024]
+        target = x_global.permute(2, 0, 1)                                       # [bs,1024,64]->[64,bs,1024]
         source = x_patch.permute(2, 0, 1)                           # [bs,1024,10]->[10,bs,1024]
         embedding = self.transformer_model(source,target)                 # [64,bs,1024]+[16,bs,1024]->[16,bs,1024]
-        embedding=embedding.permute(1,2,0)                                  # [16,bs,512]->[bs,512,16]
+        embedding=embedding.permute(1,2,0) 
         # embedding=self.convup(embedding)
 
         ################################################
@@ -659,8 +650,8 @@ class PCT_patch_semseg(nn.Module):
         #################################################
         # embedding = embedding.max(dim=-1, keepdim=False)[0]
         # embedding=embedding.unsqueeze(-1).repeat(1,1,num_points)
-        # x=self.relu(self.bn5(self.conv5(x)))
-        # x=torch.cat((x,embedding),dim=1)             # (batch_size,2048,num_points)+(batch_size, 1024,num_points) ->(batch_size, 3036,num_points)
+        x=torch.cat((x,embedding),dim=1)  
+        x=self.relu(self.bn5(self.conv5(x)))
         x=self.relu(self.bn6(self.conv6(embedding)))        # (batch_size, 512,num_points) ->(batch_size,256,num_points)
         x=self.dp6(x)
         x=self.conv7(x)                             # # (batch_size, 256,num_points) ->(batch_size,6,num_points)
