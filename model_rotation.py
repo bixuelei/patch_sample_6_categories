@@ -553,7 +553,7 @@ class DGCNN_patch_semseg(nn.Module):
         self.decoder_layer = nn.TransformerDecoderLayer(self.d_model, nhead=4)
         self.last_layer = PTransformerDecoderLayer(self.d_model, nhead=4, last_dim=512)
         self.custom_decoder = PTransformerDecoder(self.decoder_layer, 4, self.last_layer)
-        self.transformer_model = nn.Transformer(d_model=self.d_model,nhead=4,num_encoder_layers=2,num_decoder_layers=2,custom_decoder=self.custom_decoder,)
+        self.transformer_model = nn.Transformer(d_model=self.d_model,nhead=4,num_encoder_layers=1,num_decoder_layers=1,custom_decoder=self.custom_decoder,)
         self.transformer_model.apply(init_weights)
 
         ##########################################################
@@ -632,10 +632,10 @@ class DGCNN_patch_semseg(nn.Module):
 
 
         #############################################
-        ## Point Transformer  global to local
+        ## Point Transformer  patch to global
         #############################################
-        source = x_local_sorted.permute(2, 0, 1)                                        # [bs,1024,64]->[64,bs,1024]
-        target = x_gloabel.permute(2, 0, 1)                           # [bs,1024,10]->[10,bs,1024]
+        source = x_local_sorted.permute(2, 0, 1)                            # [bs,512,64]->[64,bs,1024]
+        target = x_gloabel.permute(2, 0, 1)                                 # [bs,1024,10]->[10,bs,512]
         embedding = self.transformer_model(source, target)                 # [64,bs,1024]+[16,bs,1024]->[16,bs,1024]
 
 
@@ -660,8 +660,11 @@ class DGCNN_patch_semseg(nn.Module):
         x = self.conv9(x)                                                   # (batch_size, 512, num_points) -> (batch_size, 256, num_points)
         x = self.dp1(x)
         x = self.conv10(x)                                                   # (batch_size, 256, num_points) -> (batch_size, 6, num_points)
+        if self.args.training:
+            return x,trans,result
+        else:
+            return x,trans,None
 
-        return x,trans,result
 
 
 

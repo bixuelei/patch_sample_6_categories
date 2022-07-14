@@ -423,7 +423,7 @@ def test(args, io):
 if __name__ == "__main__":
     # Training settings
     parser = argparse.ArgumentParser(description='Point Cloud Semantic Segmentation')
-    parser.add_argument('--model', type=str, default='dgcnn', metavar='N',
+    parser.add_argument('--model', type=str, default='PCT_patch', metavar='N',
                         choices=['pointnet','dgcnn','PCT','dgcnn_patch','PCT_patch'],
                         help='Model to use, [dgcnn]')
     parser.add_argument('--batch_size', type=int, default=2, metavar='batch_size',
