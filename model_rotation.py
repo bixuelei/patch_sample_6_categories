@@ -505,8 +505,6 @@ class DGCNN_patch_semseg(nn.Module):
         self.bn4 = nn.BatchNorm2d(64)
         self.bn5 = nn.BatchNorm2d(64)
         self.bn6 = nn.BatchNorm1d(512)
-        self.bn7 = nn.BatchNorm1d(512)
-        self.bn8 = nn.BatchNorm1d(256)                                                             
         self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),     #3*64=384
                                    self.bn1,            #2*64*2=256
                                    nn.LeakyReLU(negative_slope=0.2))        #0
@@ -609,10 +607,8 @@ class DGCNN_patch_semseg(nn.Module):
         x3 = x.max(dim=-1, keepdim=False)[0]    # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points)
 
 
-        x = torch.cat((x1, x2, x3), dim=1)      # (batch_size, 64*3, num_points)
-        x_pre=x
-        x = self.conv6(x)                       # (batch_size, 64*3, num_points) -> (batch_size, emb_dims, num_points)
-        x_gloabel=x
+        x_pre = torch.cat((x1, x2, x3), dim=1)      # (batch_size, 64*3, num_points)
+        x_inter = self.conv6(x_pre)                       # (batch_size, 64*3, num_points) -> (batch_size, emb_dims, num_points)
 
         #############################################
         ## sample Features
@@ -628,14 +624,14 @@ class DGCNN_patch_semseg(nn.Module):
             x_sample = self.actv_fn(bn(sort_conv(x_sample)))
 
 
-        x_local_sorted,result=self.superpointnet(x_sample,input,x_a_r,target)              #[bs,256,n_points]->[bs,512,16]
+        x_patch,predicted_kernel=self.superpointnet(x_sample,input,x_a_r,target)              #[bs,256,n_points]->[bs,512,16]
 
 
         #############################################
         ## Point Transformer  patch to global
         #############################################
-        source = x_local_sorted.permute(2, 0, 1)                            # [bs,512,64]->[64,bs,1024]
-        target = x_gloabel.permute(2, 0, 1)                                 # [bs,1024,10]->[10,bs,512]
+        source = x_patch.permute(2, 0, 1)                            # [bs,512,64]->[64,bs,1024]
+        target = x_inter.permute(2, 0, 1)                                 # [bs,1024,10]->[10,bs,512]
         embedding = self.transformer_model(source, target)                 # [64,bs,1024]+[16,bs,1024]->[16,bs,1024]
 
 
@@ -652,7 +648,7 @@ class DGCNN_patch_semseg(nn.Module):
         ##segmentation
         ################################################
         embedding=embedding.permute(1,2,0)                                  # [32,bs,512]->[bs,512,32]
-        x=self.bn7(self.conv7(x))
+        x=self.conv7(x_inter)
         x = x.max(dim=-1, keepdim=True)[0]                                  # (batch_size, emb_dims, 10) -> (batch_size, emb_dims, 1)
         x = x.repeat(1, 1, num_points)                                      # (batch_size, 1024, n_points)
         x = torch.cat((x,x_pre,embedding), dim=1)                         # (batch_size, 1024*2, num_points)
@@ -661,7 +657,7 @@ class DGCNN_patch_semseg(nn.Module):
         x = self.dp1(x)
         x = self.conv10(x)                                                   # (batch_size, 256, num_points) -> (batch_size, 6, num_points)
         if self.args.training:
-            return x,trans,result
+            return x,trans,predicted_kernel
         else:
             return x,trans,None
 
