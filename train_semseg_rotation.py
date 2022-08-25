@@ -159,6 +159,7 @@ def train(args, io):
         for i,(points,target,goals,masks) in tqdm(enumerate(train_loader),total=len(train_loader),smoothing=0.9):
             points, target,goals,masks = points.to(device), target.to(device) ,goals.to(device) ,masks.to(device)       #(batch_size, num_points, features)    (batch_size, num_points)
             points=normalize_data(points) 
+            # Visuell_PointCloud_per_batch_according_to_label(points,target)
             if args.s_a_r:                              #[bs,4096,3]
                 points,goals,GT=rotate_per_batch(points,goals)
             else:
@@ -428,11 +429,11 @@ if __name__ == "__main__":
                         help='Model to use, [dgcnn]')
     parser.add_argument('--batch_size', type=int, default=2, metavar='batch_size',
                         help='Size of batch)')
-    parser.add_argument('--root', type=str, default='/home/bi/study/thesis/data/test', 
+    parser.add_argument('--root', type=str, default='/home/bi/study/thesis/data/synthetic/new_finetune', 
                         help='file need to be tested')
     parser.add_argument('--exp', type=str, default='test', metavar='N',
                         help='experiment version to record reslut')
-    parser.add_argument('--change', type=str, default='hhh', metavar='N',
+    parser.add_argument('--change', type=str, default='hhhhh', metavar='N',
                         help='experiment version to record reslut')
     parser.add_argument('--finetune', type=bool, default=False, metavar='N',
                         help='if we finetune the model')

@@ -222,7 +222,7 @@ def find_goals_kmeans(points__,target__):  # [bs,n_points,C] [bs,n_points]
             added6=index_points(points6.unsqueeze(0),index6.unsqueeze(0))
             ########################
             # Visuell(points6,c6)
-            Visuell__(points6.squeeze(0),index6)
+            # Visuell__(points6.squeeze(0),index6)
             ############################
             _,sorted_index_bolt=added6.squeeze(0).sort(dim=0)
             sorted_index_bolt_x=sorted_index_bolt[:,0]
@@ -270,15 +270,23 @@ class MotorDataset(Dataset):
             self.motors_labels.append(motor_labels)
             num_points_eachmotor.append(motor_labels.size)
         ######## make the goals  record goals ############
-        ####### another hiwi,you could see here,  create goals #####################
+        # ####### another hiwi,you could see here,  create goals #####################
         # self.goals,self.mask=find_goals_kmeans(np.array(self.motors_points),np.array(self.motors_labels))
         # self.goals=self.goals.reshape(self.goals.shape[0],-1)
-        # np.savetxt("goals_6.txt",self.goals.reshape(self.goals.shape[0],-1))
-        # np.savetxt("mask_6.txt",self.mask)
-
-        self.goals=np.loadtxt("goals_6.txt")
-        self.goals=self.goals.reshape(self.goals.shape[0],-1,3)
-        self.mask=np.loadtxt("mask_6.txt")
+        # np.savetxt("goals.txt",self.goals.reshape(self.goals.shape[0],-1))
+        # np.savetxt("mask.txt",self.mask)
+        if "Dataset3" in data_root:
+            self.goals=np.loadtxt("goals3.txt")
+            self.goals=self.goals.reshape(self.goals.shape[0],-1,3)
+            self.mask=np.loadtxt("mask3.txt")
+        elif "Dataset4" in data_root:
+            self.goals=np.loadtxt("goals4.txt")
+            self.goals=self.goals.reshape(self.goals.shape[0],-1,3)
+            self.mask=np.loadtxt("mask4.txt") 
+        else:
+            self.goals=np.loadtxt("goals_finetune.txt")
+            self.goals=self.goals.reshape(self.goals.shape[0],-1,3)
+            self.mask=np.loadtxt("mask_finetune.txt")              
         #id=Get_ObjectID(motor_data)
         #print(id)
         ############################################################################################

@@ -17,7 +17,7 @@ from attention_util import create_conv1d_serials,create_conv3d_serials,SA_Layer_
 from util import *
 from pointnet_util import PointNetSetAbstraction,PointNetFeaturePropagation,PointNetSetAbstractionMsg, index_points,query_ball_point,square_distance
 from torch.autograd import Variable
-# from display import *
+from display import *
 
 
 def knn(x, k):
@@ -99,6 +99,29 @@ def visialize_cluster(input,indices):
             original=to_display[i,:,:].squeeze(0)
             Visuell_superpoint(sampled,original)            
 
+
+def visialize_superpoints(input,indices):
+        input=input.permute(0, 2, 1).float()
+        bs_,n_point,_=input.shape
+        to_display=input
+        man_made_label=torch.zeros((bs_,n_point,1)).to(input.device)
+        to_display=torch.cat((to_display,man_made_label),dim=-1)        #[bs,n_points,C+1]
+        bs,n_superpoints=indices.shape
+        num_topk=1
+        indices_=indices.view(bs,-1)
+        sample_point=index_points(input,indices_)                       #from [bs,n_points,3] to[bs,n_superpoint*num_topk,3]
+        sample_point=sample_point.view(bs,n_superpoints,num_topk,3)     #[bs,n_superpoint*num_topk,3]->[bs,n_superpoint,num_topk,3]
+        man_made_points=torch.zeros((bs,n_superpoints,num_topk,4)).to(input.device)
+        label_n_superpoints=torch.zeros((bs,n_superpoints,num_topk,1)).to(input.device)
+        for i in range(n_superpoints):
+            label_n_superpoints[:,i,:,:]=i+1
+            man_made_points[:,i,:,0:3]=sample_point[:,i,:,0:3]
+            man_made_points[:,i,:,3]=label_n_superpoints[:,i,:,0]
+        man_made_points=man_made_points.view(bs,-1,4)                     
+        for i in range(bs):
+            sampled=man_made_points[i,:,:].squeeze(0)
+            original=to_display[i,:,:].squeeze(0)
+            Visuell_superpoint(sampled,original)
 
 
 class STN3d(nn.Module):
@@ -383,7 +406,7 @@ class ball_query_sample_with_goal(nn.Module):                                #to
         self.input_dims = input_dims
 
         self.top_k = 32
-        self.d_model = 512
+        self.d_model = 480
         self.radius = 0.3
         self.max_radius_points = 32
 
@@ -436,10 +459,11 @@ class ball_query_sample_with_goal(nn.Module):                                #to
             bn = self.feat_bn[j]
             high_inter = self.actv_fn(bn(conv(high_inter)))
         topk = torch.topk(high_inter, k=top_k, dim=-1)                      #[bs,10,n_points]->[bs,10,n_superpoint]
-        indices = topk.indices                                          #[bs,n_superpoints,top_k]->[bs,n_superpoints,top_k]
-        
-        #visialize_cluster(input,indices)
-        indices=indices[:,:,0]
+        indices_32 = topk.indices                                          #[bs,n_superpoints,top_k]->[bs,n_superpoints,top_k]
+        # visialize_cluster(input,indices)
+        # indices=indices[:,:,0]
+        # visialize_superpoints(input,indices)
+        indices=indices_32[:,:,0]
         result_net =torch.ones((1))
         if not self.args.eval and self.args.training:                                    #[bs,n_cluster,top_k]->[bs,n_cluster,top_k]
             result_net = index_points(input.permute(0, 2, 1).float(), indices)
@@ -477,7 +501,7 @@ class ball_query_sample_with_goal(nn.Module):                                #to
             radius_points = self.actv_fn(bn(radius_conv(radius_points)))
 
         radius_points = radius_points.squeeze(dim=-1).squeeze(dim=-1)             #[bs,512,n_superpoint,1,1]->[bs,512,n_superpoint]                                          #[bs,n_superpoint]
-
+        radius_points = torch.cat((radius_points, indices_32.permute(0, 2, 1)), dim=1)
         return radius_points,result_net
 
 
@@ -494,7 +518,7 @@ class DGCNN_patch_semseg(nn.Module):
         self.num_classes= 6  
 
         #########################################################################
-        #dynamic graph based network
+        # dynamic graph based network
         ########################################################################
         self.args = args
         self.k = 20
@@ -505,6 +529,8 @@ class DGCNN_patch_semseg(nn.Module):
         self.bn4 = nn.BatchNorm2d(64)
         self.bn5 = nn.BatchNorm2d(64)
         self.bn6 = nn.BatchNorm1d(512)
+        # self.bn7 = nn.BatchNorm1d(512)
+        # self.bn8 = nn.BatchNorm1d(256)                                                             
         self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),     #3*64=384
                                    self.bn1,            #2*64*2=256
                                    nn.LeakyReLU(negative_slope=0.2))        #0
@@ -529,7 +555,7 @@ class DGCNN_patch_semseg(nn.Module):
 
 
         #############################################################################
-        #self desigened superpoint sample net and its net of generation local features 
+        # self desigened superpoint sample net and its net of generation local features 
         #############################################################################
         self.sort_ch = [self.input_dim,64, 128, 256]
         self.sort_cnn = create_conv1d_serials(self.sort_ch)   
@@ -550,7 +576,7 @@ class DGCNN_patch_semseg(nn.Module):
         ## Create Local-Global Attention
         self.decoder_layer = nn.TransformerDecoderLayer(self.d_model, nhead=4)
         self.last_layer = PTransformerDecoderLayer(self.d_model, nhead=4, last_dim=512)
-        self.custom_decoder = PTransformerDecoder(self.decoder_layer, 4, self.last_layer)
+        self.custom_decoder = PTransformerDecoder(self.decoder_layer, 1, self.last_layer)
         self.transformer_model = nn.Transformer(d_model=self.d_model,nhead=4,num_encoder_layers=1,num_decoder_layers=1,custom_decoder=self.custom_decoder,)
         self.transformer_model.apply(init_weights)
 
@@ -570,7 +596,9 @@ class DGCNN_patch_semseg(nn.Module):
         self.conv9 = nn.Sequential(nn.Conv1d(512, 256, kernel_size=1, bias=False),      #512*256=131072
                                    self.bn9,    #1024
                                    nn.LeakyReLU(negative_slope=0.2))
-        self.dp1 = nn.Dropout(p=args.dropout)
+        # self.dp1 = nn.Dropout(p=args.dropout)
+        self.dp1 = nn.Dropout(0.5)
+        self.dp2 = nn.Dropout(0.5)
         self.conv10 = nn.Conv1d(256, self.num_classes, kernel_size=1, bias=False)   #256*6=1536
 
     def forward(self, x, target):
@@ -608,7 +636,8 @@ class DGCNN_patch_semseg(nn.Module):
 
 
         x_pre = torch.cat((x1, x2, x3), dim=1)      # (batch_size, 64*3, num_points)
-        x_inter = self.conv6(x_pre)                       # (batch_size, 64*3, num_points) -> (batch_size, emb_dims, num_points)
+        x_mid = self.conv6(x_pre)                       # (batch_size, 64*3, num_points) -> (batch_size, emb_dims, num_points)
+
 
         #############################################
         ## sample Features
@@ -624,14 +653,14 @@ class DGCNN_patch_semseg(nn.Module):
             x_sample = self.actv_fn(bn(sort_conv(x_sample)))
 
 
-        x_patch,predicted_kernel=self.superpointnet(x_sample,input,x_a_r,target)              #[bs,256,n_points]->[bs,512,16]
+        x_patch, predicted_kernels = self.superpointnet(x_sample,input,x_a_r,target)              #[bs,256,n_points]->[bs,512,16]
 
 
         #############################################
         ## Point Transformer  patch to global
         #############################################
         source = x_patch.permute(2, 0, 1)                            # [bs,512,64]->[64,bs,1024]
-        target = x_inter.permute(2, 0, 1)                                 # [bs,1024,10]->[10,bs,512]
+        target = x_mid.permute(2, 0, 1)                                 # [bs,1024,10]->[10,bs,512]
         embedding = self.transformer_model(source, target)                 # [64,bs,1024]+[16,bs,1024]->[16,bs,1024]
 
 
@@ -639,7 +668,7 @@ class DGCNN_patch_semseg(nn.Module):
         # ## Point Transformer  local to global
         # #############################################
         # target = x.permute(2, 0, 1)                                        # [bs,1024,64]->[64,bs,1024]
-        # source = x_local_sorted.permute(2, 0, 1)                           # [bs,1024,10]->[10,bs,1024]
+        # source = x_patch.permute(2, 0, 1)                           # [bs,1024,10]->[10,bs,1024]
         # embedding = self.transformer_model(source, target)                 # [16,bs,1024]+[64,bs,1024]->[64,bs,1024]
 
 
@@ -648,16 +677,18 @@ class DGCNN_patch_semseg(nn.Module):
         ##segmentation
         ################################################
         embedding=embedding.permute(1,2,0)                                  # [32,bs,512]->[bs,512,32]
-        x=self.conv7(x_inter)
+        # x=self.bn7(self.conv7(x))
+        x = self.conv7(x_mid)
         x = x.max(dim=-1, keepdim=True)[0]                                  # (batch_size, emb_dims, 10) -> (batch_size, emb_dims, 1)
         x = x.repeat(1, 1, num_points)                                      # (batch_size, 1024, n_points)
         x = torch.cat((x,x_pre,embedding), dim=1)                         # (batch_size, 1024*2, num_points)
         x = self.conv8(x)                                                   # (batch_size, 1024*2, num_points) -> (batch_size, 512, num_points)
+        # x = self.dp1(x)
         x = self.conv9(x)                                                   # (batch_size, 512, num_points) -> (batch_size, 256, num_points)
-        x = self.dp1(x)
+        x = self.dp2(x)
         x = self.conv10(x)                                                   # (batch_size, 256, num_points) -> (batch_size, 6, num_points)
         if self.args.training:
-            return x,trans,predicted_kernel
+            return x,trans,predicted_kernels
         else:
             return x,trans,None
 
@@ -760,7 +791,7 @@ class PCT_patch_semseg(nn.Module):
         trans=self.s3n(x)
         x=x.permute(0,2,1)                      #(batch_size, 3, num_points)->(batch_size,  num_points,3)
         x = torch.bmm(x, trans)
-        #Visuell_PointCloud_per_batch(x,target)
+        Visuell_PointCloud_per_batch(x,target)
         x=x.permute(0,2,1)
         x_a_r=x
 
@@ -839,4 +870,3 @@ class PCT_patch_semseg(nn.Module):
             return x,trans,result
         else:
             return x,trans,None
-

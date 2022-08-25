@@ -40,46 +40,37 @@ def normalize_data(batch_data):
 
 
 
-def Visuell(sampled,add, SavePCDFile = False, FileName = None):
+def Visuell_PointCloud(sampled, SavePCDFile = False, FileName = None):
     #get only the koordinate from sampled
-    sampled=sampled.cpu()
     sampled = np.asarray(sampled)
-    add=add.cpu()
-    add = np.asarray(add)
-    PointCloud_koordinate = np.vstack((sampled,add))
+    PointCloud_koordinate = sampled[:, 0:3]
+    colors=sampled[:, 3:6]
+    
+    colors=colors/255
+    print(colors)
 
+    #visuell the point cloud
+    point_cloud = open3d.geometry.PointCloud()
+    point_cloud.points = open3d.utility.Vector3dVector(PointCloud_koordinate)
+    point_cloud.colors = open3d.utility.Vector3dVector(colors)
+    open3d.visualization.draw_geometries([point_cloud])
+
+    if SavePCDFile is True:
+    # #save the pcd file
+        open3d.io.write_point_cloud(FileName +'.pcd', point_cloud)
+
+
+
+def Visuell_PointCloud_man_defined_color(sampled, SavePCDFile = False, FileName = None):
+    #get only the koordinate from sampled
+    sampled = np.asarray(sampled)
+    PointCloud_koordinate = sampled[:, 0:3]
     colors=[]
     for i in range(sampled.shape[0]):
-        colors.append([70,70,70])
-    for i in range(add.shape[0]):
-        colors.append([255,0,0])
-    colors=np.array(colors)
-    colors=colors/255
-    print(colors)
-
-    #visuell the point cloud
-    point_cloud = open3d.geometry.PointCloud()
-    point_cloud.points = open3d.utility.Vector3dVector(PointCloud_koordinate)
-    point_cloud.colors = open3d.utility.Vector3dVector(colors)
-    open3d.visualization.draw_geometries([point_cloud])
-
-    if SavePCDFile is True:
-    # #save the pcd file
-        open3d.io.write_point_cloud(FileName +'.pcd', point_cloud)
-
-
-
-def Visuell__(sampled,add, SavePCDFile = False, FileName = None):
-    #get only the koordinate from sampled
-    sampled=sampled.cpu()
-    sampled = np.asarray(sampled)
-    PointCloud_koordinate=sampled
-    colors=[]
-    for i in range(PointCloud_koordinate.shape[0]):
-        if i not in add:
-            colors.append([70,70,70])
-        else:
-            colors.append([255,0,0])
+        r=color_map["cover"][0]
+        g=color_map["cover"][1]
+        b=color_map["cover"][2]
+        colors.append([r,g,b])
     colors=np.array(colors)
     colors=colors/255
     print(colors)
@@ -97,7 +88,7 @@ def Visuell__(sampled,add, SavePCDFile = False, FileName = None):
 
 
 
-def Visuell_PointCloud(sampled, SavePCDFile = False, FileName = None):
+def Visuell_PointCloud_accordding_to_label(sampled, SavePCDFile = False, FileName = None):
     #get only the koordinate from sampled
     sampled = np.asarray(sampled)
     PointCloud_koordinate = sampled[:, 0:3]
@@ -143,6 +134,44 @@ def Visuell_PointCloud(sampled, SavePCDFile = False, FileName = None):
             colors.append([r,g,b])
     colors=np.array(colors)
     colors=colors/255
+    print(colors)
+
+    #visuell the point cloud
+    point_cloud = open3d.geometry.PointCloud()
+    point_cloud.points = open3d.utility.Vector3dVector(PointCloud_koordinate)
+    point_cloud.colors = open3d.utility.Vector3dVector(colors)
+    open3d.visualization.draw_geometries([point_cloud])
+
+    if SavePCDFile is True:
+    # #save the pcd file
+        open3d.io.write_point_cloud(FileName +'.pcd', point_cloud)
+
+
+
+def Visuell_PointCloud_bolts(sampled, SavePCDFile = False, FileName = None):
+    #get only the koordinate from sampled
+    sampled = np.asarray(sampled)
+    PointCloud_koordinate = []
+    label=sampled[:,3]
+    labels = np.asarray(label)
+    colors=[]
+    for i in range(labels.shape[0]):
+        dp=labels[i]
+        if dp==5:
+            r=color_map["side_bolts"][0]
+            g=color_map["side_bolts"][1]
+            b=color_map["side_bolts"][2]
+            PointCloud_koordinate.append(sampled[i,0:3])
+            colors.append([r,g,b])
+        elif dp==6 :
+            r=color_map["bolts"][0]
+            g=color_map["bolts"][1]
+            b=color_map["bolts"][2]
+            PointCloud_koordinate.append(sampled[i,0:3])
+            colors.append([r,g,b])
+    colors=np.array(colors)
+    colors=colors/255
+    PointCloud_koordinate=np.array(PointCloud_koordinate)
     print(colors)
 
     #visuell the point cloud
@@ -236,9 +265,9 @@ def Visuell_PointCloud_per_batch_according_to_label(sampled,target, SavePCDFile 
             g=color_map["bottom"][1]
             b=color_map["bottom"][2]
         elif dp==5:
-            r=color_map["side_bolts"][0]
-            g=color_map["side_bolts"][1]
-            b=color_map["side_bolts"][2]
+            r=color_map["bolts"][0]
+            g=color_map["bolts"][1]
+            b=color_map["bolts"][2]
         else:
             r=color_map["bolts"][0]
             g=color_map["bolts"][1]
@@ -273,9 +302,9 @@ def Visuell_PointCloud_per_batch_according_to_label(sampled,target, SavePCDFile 
             g=color_map["bottom"][1]
             b=color_map["bottom"][2]
         elif dp==5:
-            r=color_map["side_bolts"][0]
-            g=color_map["side_bolts"][1]
-            b=color_map["side_bolts"][2]
+            r=color_map["bolts"][0]
+            g=color_map["bolts"][1]
+            b=color_map["bolts"][2]
         else:
             r=color_map["bolts"][0]
             g=color_map["bolts"][1]
@@ -311,9 +340,9 @@ def Visuell_PointCloud_per_batch_according_to_label(sampled,target, SavePCDFile 
             g=color_map["bottom"][1]
             b=color_map["bottom"][2]
         elif dp==5:
-            r=color_map["side_bolts"][0]
-            g=color_map["side_bolts"][1]
-            b=color_map["side_bolts"][2]
+            r=color_map["bolts"][0]
+            g=color_map["bolts"][1]
+            b=color_map["bolts"][2]
         else:
             r=color_map["bolts"][0]
             g=color_map["bolts"][1]
@@ -349,9 +378,9 @@ def Visuell_PointCloud_per_batch_according_to_label(sampled,target, SavePCDFile 
             g=color_map["bottom"][1]
             b=color_map["bottom"][2]
         elif dp==5:
-            r=color_map["side_bolts"][0]
-            g=color_map["side_bolts"][1]
-            b=color_map["side_bolts"][2]
+            r=color_map["bolts"][0]
+            g=color_map["bolts"][1]
+            b=color_map["bolts"][2]
         else:
             r=color_map["bolts"][0]
             g=color_map["bolts"][1]
@@ -386,9 +415,9 @@ def Visuell_PointCloud_per_batch_according_to_label(sampled,target, SavePCDFile 
             g=color_map["bottom"][1]
             b=color_map["bottom"][2]
         elif dp==5:
-            r=color_map["side_bolts"][0]
-            g=color_map["side_bolts"][1]
-            b=color_map["side_bolts"][2]
+            r=color_map["bolts"][0]
+            g=color_map["bolts"][1]
+            b=color_map["bolts"][2]
         else:
             r=color_map["bolts"][0]
             g=color_map["bolts"][1]
@@ -480,6 +509,8 @@ def Visuell_PointCloud_per_batch_nocolor(sampled, SavePCDFile = False, FileName 
 
 
  
+
+
 def main():
 
     # save_dir='/home/bi/study/thesis/data/current_finetune/A1/TrainingA1_1.npy'
@@ -491,8 +522,8 @@ def main():
     # print(len(patch_motor))
     # Visuell_PointCloud(patch_motor)
 
-
-    file_path="/home/bi/study/thesis/data/synthetic/Dataset4"
+    
+    file_path="/home/bi/study/thesis/data/synthetic/Dataset3"
     List_motor = os.listdir(file_path)
     if 'display.py' in List_motor :
         List_motor.remove('display.py')
@@ -501,16 +532,30 @@ def main():
     List_motor.sort()
     for dirs in List_motor :
         Motor_path = file_path + '/' + dirs
-        # if "98" in dirs:
-        if True:
+        if "022" in dirs:
+        # if True:
             if dirs.split('.')[1]=='txt':
             
                 patch_motor=np.loadtxt(Motor_path)  
             else:
                 patch_motor=np.load(Motor_path)  
-            if "Training" in dirs:     
+            # if "Training" in dirs:     
                 print(len(patch_motor))
-                Visuell_PointCloud(patch_motor)
+                # Visuell_PointCloud(patch_motor)
+                Visuell_PointCloud_accordding_to_label(patch_motor)
+                # filename=os. getcwd()
+                # filename=filename+"/cut.pcd"
+                # open3d_save_pcd(patch_motor,filename)
+                
+
+def open3d_save_pcd(pc,filename):
+    sampled = np.asarray(pc)
+    PointCloud_koordinate = sampled[:, 0:3]
+
+    #visuell the point cloud
+    point_cloud = open3d.geometry.PointCloud()
+    point_cloud.points = open3d.utility.Vector3dVector(PointCloud_koordinate)
+    open3d.io.write_point_cloud(filename, point_cloud, write_ascii=True )             
 
 
 if __name__ == '__main__':
